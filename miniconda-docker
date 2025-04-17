@@ -1,0 +1,71 @@
+# Use Ubuntu as the base image
+FROM ubuntu:22.04
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV ENV_FOLDER="/environments"
+ENV CONDA_DIR="/opt/miniconda"
+ENV USERNAME="root"
+ENV DATA_FOLDER="/mnt/data"
+
+
+# RUN apt-get update && apt-get install -y && \
+RUN apt-get update && \
+    apt-get install -y wget curl gnupg2 ca-certificates \
+    software-properties-common vim \
+    build-essential linux-headers-generic openssh-server && \
+    mkdir /var/run/sshd && \
+    rm -rf /var/lib/apt/lists/*
+
+
+# Install Miniconda
+RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh && \
+    bash /tmp/miniconda.sh -b -p $CONDA_DIR && \
+    rm /tmp/miniconda.sh
+
+# Set root password using an environment variable (can be overridden in docker-compose)
+# This is weak passwsord - Make sure to change it
+ARG ROOT_PASSWORD="1qaz@WSX"
+RUN echo "root:$ROOT_PASSWORD" | chpasswd && \
+    echo "PermitRootLogin yes" >> /etc/ssh/sshd_config && \
+    echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config
+
+
+# Allow root login and password authentication
+RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+
+# Set Conda environment variables
+ENV PATH="$CONDA_DIR/bin:$PATH"
+
+
+#Add Conda to PATH and ensure it works in all shells
+RUN echo "export PATH=\"$CONDA_DIR/bin:\$PATH\"" >> /etc/profile && \
+    echo "export PATH=\"$CONDA_DIR/bin:\$PATH\"" >> /root/.bashrc && \
+    echo "source /root/.bashrc" >> /root/.profile
+
+#Force source of bashrc when opening a shell
+RUN echo "[[ -f ~/.bashrc ]] && . ~/.bashrc" >> /root/.bash_profile
+
+RUN mkdir -p $ENV_FOLDER && \
+    chown -R $USERNAME:$USERNAME $ENV_FOLDER $CONDA_DIR
+
+# # Copy the local environments folder (YAML files) into the container
+COPY environments $ENV_FOLDER
+
+# Disable SSL verification for Conda and Pip (Optional - Not recommended for production)
+RUN conda config --set ssl_verify false
+ENV PIP_NO_SSL_VERIFY=1
+
+# Create Conda environments from YAML files
+RUN find $ENV_FOLDER -name '*.yml' -exec conda env create -f {} \;
+RUN conda init
+# Ensure /mnt/data exists and has correct permissions
+RUN mkdir -p $DATA_FOLDER && chown -R $USERNAME:$USERNAME $DATA_FOLDER
+
+## Expose SSH port
+EXPOSE 22
+
+# Start the SSH service
+CMD ["/usr/sbin/sshd", "-D"]
