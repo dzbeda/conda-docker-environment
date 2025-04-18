@@ -1,0 +1,27 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    env:
+      # in order to have a uniqe tag use - $(date +%s)
+      IMAGE_TAG: latest
+      DOCKER_IMAGE_NAME_AND_REPO: dzbeda/miniconda
+
+    steps:
+    #   uses: actions/checkout@v4  - This step clone your repository to the server where the action is running 
+    - uses: actions/checkout@v4
+    - name: Build the Docker image
+      run: docker build . --file miniconda-docker --tag $DOCKER_IMAGE_NAME_AND_REPO:$IMAGE_TAG
+    - name: push to dockerHub
+      run: docker push $DOCKER_IMAGE_NAME_AND_REPO:$IMAGE_TAG
+ 
